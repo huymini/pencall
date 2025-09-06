@@ -198,7 +198,7 @@ async fn run_allocation_simulation(
                 return Err(PencallError::Internal("allocation disappeared".into()));
             }
         }
-
+	
         // Calculate allowable release this tick
         let possible_release = std::cmp::min(current_chunk, req.requested_units.saturating_sub(released_total));
         let allowable_release = std::cmp::min(possible_release, cap.saturating_sub(released_total));
@@ -243,5 +243,176 @@ async fn run_allocation_simulation(
         next_release = Utc::now() + Duration::seconds(doubling as i64);
 
         // Safety: if released_total >= requested_units or cap, loop will exit next iteration
+    }
+}
+
+
+pub mod pencall {
+    use async_trait::async_trait;
+    use chrono::{DateTime, Utc, Duration};
+    use serde::{Deserialize, Serialize};
+    use std::sync::Arc;
+    use thiserror::Error;
+    use tokio::sync::RwLock;
+    use tracing::{info, warn};
+
+    #[derive(Debug, Error)]
+    pub enum PencallError {
+        #[error("authorization failed")]
+        Unauthorized,
+        #[error("invalid arguments: {0}")]
+        InvalidArgs(String),
+        #[error("delivery error: {0}")]
+        DeliveryError(String),
+        #[error("internal error: {0}")]
+        Internal(String),
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct AllocationRequest {
+        pub id: String,
+        pub requested_units: u64,
+        pub start_time: DateTime<Utc>,
+        pub initial_release: Option<u64>,
+        pub doubling_interval_seconds: u64,
+        pub cap_units: Option<u64>,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub enum AllocationStatus {
+        Pending,
+        Active { released: u64, last_release_at: DateTime<Utc> },
+        Completed,
+        Cancelled,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct ReleaseEvent {
+        pub allocation_id: String,
+        pub release_time: DateTime<Utc>,
+        pub units: u64,
+    }
+
+    #[async_trait]
+    pub trait DeliveryProvider: Send + Sync {
+        async fn deliver(&self, event: &ReleaseEvent) -> Result<(), PencallError>;
+    }
+
+    #[derive(Default)]
+    pub struct Store {
+        pub allocations: RwLock<std::collections::HashMap<String, (AllocationRequest, AllocationStatus)>>,
+    }
+
+    impl Store {
+        pub fn new() -> Self {
+            Self { allocations: RwLock::new(std::collections::HashMap::new()) }
+        }
+    }
+
+    pub struct Pencall {
+        store: Arc<Store>,
+        provider: Arc<dyn DeliveryProvider>,
+        policy_check: Arc<dyn Fn(&AllocationRequest) -> Result<(), PencallError> + Send + Sync>,
+    }
+
+    impl Pencall {
+        pub fn new(
+            store: Arc<Store>,
+            provider: Arc<dyn DeliveryProvider>,
+            policy_check: Arc<dyn Fn(&AllocationRequest) -> Result<(), PencallError> + Send + Sync>,
+        ) -> Self {
+            Self { store, provider, policy_check }
+        }
+
+        pub async fn register_allocation(&self, req: AllocationRequest) -> Result<(), PencallError> {
+            (self.policy_check)(&req)?;
+            if req.requested_units == 0 {
+                return Err(PencallError::InvalidArgs("requested_units must be > 0".into()));
+            }
+            if req.doubling_interval_seconds == 0 {
+                return Err(PencallError::InvalidArgs("doubling_interval_seconds must be > 0".into()));
+            }
+
+            let mut map = self.store.allocations.write().await;
+            if map.contains_key(&req.id) {
+                return Err(PencallError::InvalidArgs("id already exists".into()));
+            }
+            map.insert(req.id.clone(), (req, AllocationStatus::Pending));
+            Ok(())
+        }
+
+        pub async fn activate(&self, allocation_id: &str) -> Result<(), PencallError> {
+            let mut map = self.store.allocations.write().await;
+            let (req, status) = map.get_mut(allocation_id)
+                .ok_or_else(|| PencallError::InvalidArgs("allocation not found".into()))?
+                .clone();
+
+            match status {
+                AllocationStatus::Pending => (),
+                _ => return Err(PencallError::InvalidArgs("allocation not in pending state".into())),
+            }
+
+            let now = Utc::now();
+            let initial = req.initial_release.unwrap_or(0);
+            map.insert(req.id.clone(), (req.clone(), AllocationStatus::Active { released: initial, last_release_at: now }));
+            drop(map);
+
+            let store = self.store.clone();
+            let provider = self.provider.clone();
+            let alloc = req.clone();
+            tokio::spawn(async move {
+                if let Err(e) = run_allocation_simulation(store, provider, alloc).await {
+                    warn!("error: {:?}", e);
+                }
+            });
+
+            Ok(())
+        }
+    }
+
+    async fn run_allocation_simulation(
+        store: Arc<Store>,
+        provider: Arc<dyn DeliveryProvider>,
+        req: AllocationRequest,
+    ) -> Result<(), PencallError> {
+        let mut released_total: u64 = req.initial_release.unwrap_or(0);
+        let mut next_release = req.start_time;
+        let mut current_chunk: u64 = std::cmp::max(1, req.initial_release.unwrap_or(1));
+
+        let cap = req.cap_units.unwrap_or(u64::MAX);
+
+        loop {
+            let now = Utc::now();
+            if next_release > now {
+                let dur = (next_release - now).num_seconds().max(0) as u64;
+                tokio::time::sleep(std::time::Duration::from_secs(dur)).await;
+            }
+
+            let possible_release = std::cmp::min(current_chunk, req.requested_units.saturating_sub(released_total));
+            let allowable_release = std::cmp::min(possible_release, cap.saturating_sub(released_total));
+            if allowable_release == 0 {
+                let mut map = store.allocations.write().await;
+                map.insert(req.id.clone(), (req.clone(), AllocationStatus::Completed));
+                return Ok(());
+            }
+
+            let event = ReleaseEvent {
+                allocation_id: req.id.clone(),
+                release_time: Utc::now(),
+                units: allowable_release,
+            };
+
+            provider.deliver(&event).await?;
+
+            released_total = released_total.saturating_add(allowable_release);
+            let mut map = store.allocations.write().await;
+            map.insert(req.id.clone(), (req.clone(), AllocationStatus::Active {
+                released: released_total,
+                last_release_at: Utc::now(),
+            }));
+
+            current_chunk = current_chunk.saturating_mul(2);
+            next_release = Utc::now() + Duration::seconds(req.doubling_interval_seconds as i64);
+        }
     }
 }
