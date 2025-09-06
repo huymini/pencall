@@ -105,11 +105,9 @@ impl Pencall {
     }
 
     /// Register an allocation (runs policy check)
-    pub async fn register_allocation(&self, req: AllocationRequest) -> Result<(), PencallError> {
-        // Policy & authorization
-        (self.policy_check)(&req).map_err(|e| e)?;
+   pub async fn register_allocation(&self, req: AllocationRequest) -> Result<(), PencallError> {
+        (self.policy_check)(&req)?;
 
-        // Basic validation
         if req.requested_units == 0 {
             return Err(PencallError::InvalidArgs("requested_units must be > 0".into()));
         }
@@ -121,10 +119,14 @@ impl Pencall {
         if map.contains_key(&req.id) {
             return Err(PencallError::InvalidArgs("id already exists".into()));
         }
-        map.insert(req.id.clone(), (req, AllocationStatus::Pending));
-        info!(allocation_id=%req.id, "registered allocation");
+
+        let id = req.id.clone(); // keep an owned copy of the id
+        map.insert(id.clone(), (req, AllocationStatus::Pending));
+        info!(allocation_id=%id, "registered allocation");
+
         Ok(())
-    }
+}
+
 
     /// Activate an allocation and schedule simulated releases.
     /// Note: This runner simulates releases in-process. Production should use external schedulers and durable jobs.
